@@ -1,5 +1,5 @@
 /*
- * led.h
+ * led_driver.h
  *
  * Header file for led.c
  *
@@ -7,8 +7,8 @@
  *      Author: Tiago Ukei
  */
 
-#ifndef APPLICATION_INCLUDES_LED_H_
-#define APPLICATION_INCLUDES_LED_H_
+#ifndef APPLICATION_INCLUDES_LED_DRIVER_H_
+#define APPLICATION_INCLUDES_LED_DRIVER_H_
 
 #define INPUT				0
 #define OUTPUT				1
@@ -25,4 +25,4 @@ void vLedInit(led_t);
 
 void vLedToggle(led_t);
 
-#endif /* APPLICATION_INCLUDES_LED_H_ */
+#endif /* APPLICATION_INCLUDES_LED_DRIVER_H_ */

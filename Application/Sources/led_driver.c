@@ -1,5 +1,5 @@
 /*
- * led.c
+ * led_driver.c
  *
  * Contains the functions that handle the LED
  *
@@ -8,7 +8,7 @@
  */
 
 #include "MKL25Z4.h"
-#include "led.h"
+#include "led_driver.h"
 
 void vLedInit(led_t led) {
 
