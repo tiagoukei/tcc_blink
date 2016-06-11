@@ -71,17 +71,13 @@
 #ifndef PORTMACRO_H
 #define PORTMACRO_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*-----------------------------------------------------------
  * Port specific definitions.
  *
  * The settings in this file configure FreeRTOS correctly for the
  * given hardware and compiler.
  *
- * These settings should not be altered.
+ * Modified by: Tiago Ukei
  *-----------------------------------------------------------
  */
 
@@ -117,9 +113,8 @@ typedef unsigned long UBaseType_t;
 #define portBYTE_ALIGNMENT			8
 /*-----------------------------------------------------------*/
 
-
 /* Scheduler utilities. */
-extern void vPortYield( void );
+void vPortYield( void );
 #define portNVIC_INT_CTRL_REG		( * ( ( volatile uint32_t * ) 0xe000ed04 ) )
 #define portNVIC_PENDSVSET_BIT		( 1UL << 28UL )
 #define portYIELD()					vPortYield()
@@ -127,12 +122,35 @@ extern void vPortYield( void );
 #define portYIELD_FROM_ISR( x ) portEND_SWITCHING_ISR( x )
 /*-----------------------------------------------------------*/
 
+/*
+ * Setup the timer to generate the tick interrupts.
+ */
+static void prvSetupTimerInterrupt( void );
 
-/* Critical section management. */
-extern void vPortEnterCritical( void );
-extern void vPortExitCritical( void );
-extern uint32_t ulSetInterruptMaskFromISR( void ) __attribute__((naked));
-extern void vClearInterruptMaskFromISR( uint32_t ulMask )  __attribute__((naked));
+/*
+ * Start first task is a separate function so it can be tested in isolation.
+ */
+static void vPortStartFirstTask( void ) __attribute__ (( naked ));
+
+/*
+ * Exception handlers.
+ */
+void xPortPendSVHandler( void ) __attribute__ (( naked ));
+void xPortSysTickHandler( void );
+void vPortSVCHandler( void );
+
+/*
+ * Used to catch tasks that attempt to return from their implementing function.
+ */
+static void prvTaskExitError( void );
+
+/*
+ * Critical section management.
+ */
+void vPortEnterCritical( void );
+void vPortExitCritical( void );
+uint32_t ulSetInterruptMaskFromISR( void ) __attribute__((naked));
+void vClearInterruptMaskFromISR( uint32_t ulMask )  __attribute__((naked));
 
 #define portSET_INTERRUPT_MASK_FROM_ISR()		ulSetInterruptMaskFromISR()
 #define portCLEAR_INTERRUPT_MASK_FROM_ISR(x)	vClearInterruptMaskFromISR( x )
@@ -148,10 +166,6 @@ extern void vClearInterruptMaskFromISR( uint32_t ulMask )  __attribute__((naked)
 #define portTASK_FUNCTION( vFunction, pvParameters ) void vFunction( void *pvParameters )
 
 #define portNOP()
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* PORTMACRO_H */
 
