@@ -12,16 +12,16 @@
 
 void vLedInit(led_t led) {
 
+	SIM_SCGC5 |= SIM_SCGC5_PORTB_MASK;	//enables system clock gating for PORTB
+
 	switch(led) {
 	case LEDRGB_RED:
-		SIM_SCGC5 |= SIM_SCGC5_PORTB_MASK;	//enables system clock gating for PORTB
 		PORTB_PCR18 = PORT_PCR_MUX(1);		//enables PTB18 as GPIO
 		GPIOB_PDDR |= LEDRGB_RED_DIR;		//set output direction
 		GPIOB_PSOR |= LEDRGB_RED_SET;		//turn off led
 		break;
 
 	case LEDRGB_GREEN:
-		SIM_SCGC5 |= SIM_SCGC5_PORTB_MASK;	//enables system clock gating for PORTB
 		PORTB_PCR19 = PORT_PCR_MUX(1);		//enables PTB19 as GPIO
 		GPIOB_PDDR |= LEDRGB_GREEN_DIR;		//set output direction
 		GPIOB_PSOR |= LEDRGB_GREEN_SET;		//turn off led

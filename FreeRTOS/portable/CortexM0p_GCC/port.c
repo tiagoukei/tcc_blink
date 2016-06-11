@@ -69,62 +69,29 @@
 
 /*-----------------------------------------------------------
  * Implementation of functions defined in portable.h for the ARM CM0 port.
+ * Modified by: Tiago Ukei
  *----------------------------------------------------------*/
 
 /* Scheduler includes. */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "portmacro.h"
+#include "MKL25Z4.h"
 
 /* Constants required to manipulate the NVIC. */
-#define portNVIC_SYSTICK_CTRL		( ( volatile uint32_t *) 0xe000e010 )
-#define portNVIC_SYSTICK_LOAD		( ( volatile uint32_t *) 0xe000e014 )
-#define portNVIC_INT_CTRL			( ( volatile uint32_t *) 0xe000ed04 )
-#define portNVIC_SYSPRI2			( ( volatile uint32_t *) 0xe000ed20 )
-#define portNVIC_SYSTICK_CLK		0x00000004
-#define portNVIC_SYSTICK_INT		0x00000002
-#define portNVIC_SYSTICK_ENABLE		0x00000001
-#define portNVIC_PENDSVSET			0x10000000
-#define portMIN_INTERRUPT_PRIORITY	( 255UL )
-#define portNVIC_PENDSV_PRI			( portMIN_INTERRUPT_PRIORITY << 16UL )
-#define portNVIC_SYSTICK_PRI		( portMIN_INTERRUPT_PRIORITY << 24UL )
+#define portNVIC_SYSTICK_CLK		(1UL << 2UL)	//processor clock
+#define portNVIC_SYSTICK_INT		(1UL << 1UL)	//enables systick interrupt
+#define portNVIC_SYSTICK_ENABLE		1UL				//enables the counter
+#define portNVIC_PENDSVSET			(1UL << 28UL)	//set pending SV bit
+#define portNVIC_PENDSV_PRI			(255UL)			//pending SV priority
+#define portNVIC_SYSTICK_PRI		(255UL)			//systick configuration
 
 /* Constants required to set up the initial stack. */
-#define portINITIAL_XPSR			( 0x01000000 )
-
-/* Let the user override the pre-loading of the initial LR with the address of
-prvTaskExitError() in case it messes up unwinding of the stack in the
-debugger. */
-#ifdef configTASK_RETURN_ADDRESS
-	#define portTASK_RETURN_ADDRESS	configTASK_RETURN_ADDRESS
-#else
-	#define portTASK_RETURN_ADDRESS	prvTaskExitError
-#endif
+#define portINITIAL_XPSR			(1UL << 24UL)
 
 /* Each task maintains its own interrupt status in the critical nesting
 variable. */
-static UBaseType_t uxCriticalNesting = 0xaaaaaaaa;
-
-/*
- * Setup the timer to generate the tick interrupts.
- */
-static void prvSetupTimerInterrupt( void );
-
-/*
- * Exception handlers.
- */
-void xPortPendSVHandler( void ) __attribute__ (( naked ));
-void xPortSysTickHandler( void );
-void vPortSVCHandler( void );
-
-/*
- * Start first task is a separate function so it can be tested in isolation.
- */
-static void vPortStartFirstTask( void ) __attribute__ (( naked ));
-
-/*
- * Used to catch tasks that attempt to return from their implementing function.
- */
-static void prvTaskExitError( void );
+static UBaseType_t uxCriticalNesting = 0;
 
 /*-----------------------------------------------------------*/
 
@@ -140,7 +107,7 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
 	pxTopOfStack--;
 	*pxTopOfStack = ( StackType_t ) pxCode;	/* PC */
 	pxTopOfStack--;
-	*pxTopOfStack = ( StackType_t ) portTASK_RETURN_ADDRESS;	/* LR */
+	*pxTopOfStack = ( StackType_t ) prvTaskExitError;	/* LR */
 	pxTopOfStack -= 5;	/* R12, R3, R2 and R1. */
 	*pxTopOfStack = ( StackType_t ) pvParameters;	/* R0 */
 	pxTopOfStack -= 8; /* R11..R4. */
@@ -160,13 +127,6 @@ static void prvTaskExitError( void )
 	configASSERT( uxCriticalNesting == ~0UL );
 	portDISABLE_INTERRUPTS();
 	for( ;; );
-}
-/*-----------------------------------------------------------*/
-
-void vPortSVCHandler( void )
-{
-	/* This function is no longer used, but retained for backward
-	compatibility. */
 }
 /*-----------------------------------------------------------*/
 
@@ -199,15 +159,15 @@ void vPortStartFirstTask( void )
  */
 BaseType_t xPortStartScheduler( void )
 {
-	/* Make PendSV, CallSV and SysTick the same priroity as the kernel. */
-	*(portNVIC_SYSPRI2) |= portNVIC_PENDSV_PRI;
-	*(portNVIC_SYSPRI2) |= portNVIC_SYSTICK_PRI;
+	/* Make PendSV, CallSV and SysTick the same priority as the kernel. */
+	NVIC_SetPriority(PendSV_IRQn,portNVIC_PENDSV_PRI);
+	NVIC_SetPriority(SysTick_IRQn,portNVIC_SYSTICK_PRI);
 
 	/* Start the timer that generates the tick ISR.  Interrupts are disabled
 	here already. */
 	prvSetupTimerInterrupt();
 
-	/* Initialise the critical nesting count ready for the first task. */
+	/* Initialize the critical nesting count ready for the first task. */
 	uxCriticalNesting = 0;
 
 	/* Start the first task. */
@@ -235,7 +195,7 @@ void vPortEndScheduler( void )
 void vPortYield( void )
 {
 	/* Set a PendSV to request a context switch. */
-	*( portNVIC_INT_CTRL ) = portNVIC_PENDSVSET;
+	SCB->ICSR |= portNVIC_PENDSVSET;
 
 	/* Barriers are normally not required but do ensure the code is completely
 	within the specified behaviour for the architecture. */
@@ -347,7 +307,7 @@ uint32_t ulPreviousMask;
 		if( xTaskIncrementTick() != pdFALSE )
 		{
 			/* Pend a context switch. */
-			*(portNVIC_INT_CTRL) = portNVIC_PENDSVSET;
+			SCB->ICSR |= portNVIC_PENDSVSET;
 		}
 	}
 	portCLEAR_INTERRUPT_MASK_FROM_ISR( ulPreviousMask );
@@ -361,8 +321,8 @@ uint32_t ulPreviousMask;
 void prvSetupTimerInterrupt( void )
 {
 	/* Configure SysTick to interrupt at the requested rate. */
-	*(portNVIC_SYSTICK_LOAD) = ( configCPU_CLOCK_HZ / configTICK_RATE_HZ ) - 1UL;
-	*(portNVIC_SYSTICK_CTRL) = portNVIC_SYSTICK_CLK | portNVIC_SYSTICK_INT | portNVIC_SYSTICK_ENABLE;
+	SysTick->LOAD = ( configCPU_CLOCK_HZ / configTICK_RATE_HZ ) - 1UL;
+	SysTick->CTRL = portNVIC_SYSTICK_CLK | portNVIC_SYSTICK_INT | portNVIC_SYSTICK_ENABLE;
 }
 /*-----------------------------------------------------------*/
 
